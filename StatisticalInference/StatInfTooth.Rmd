@@ -1,0 +1,237 @@
+---
+title: "Statistical Inference Course Project"
+subtitle: "Part 2: Basic Inferential Data Analysis"
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_height: 2.5
+    fig_width: 3.5
+author: "audrey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+## Introduction
+
+The **ToothGrowth**^[Source: C. I. Bliss (1952) The Statistics of Bioassay. Academic Press.] data set investigates the effect of vitamin C on tooth growth in 10 guinea pigs. The data set contains 60 observations on 3 variables: *len* denotes the tooth length, *supp* represents the vitamin C supplement type [absorbic acid (VC) or orange juice (OJ)], and *dose* is the dose in milligrams. Note: I am inferring that "VC" represents absorbic acid as the dataset description is poor at best. The response is the tooth length growth; we are interested in exploring whether growth is affected by dose or supplement type or both factors. We achieve this through statistical inference; however, it is of interest to complete an exploratory data analysis first in order to drive our inferential statistics. Note that _response_ and _tooth length growth_ are used interchangeably in this report.
+
+## Exploratory data analysis
+
+```{r, echo = FALSE}
+library(datasets)
+data("ToothGrowth")
+```
+
+We obtain some basic information and summary of the data including the number of observations, variables and quartile values (see Appendix for more data summary statistics).
+
+```{r, echo = FALSE}
+str(ToothGrowth)
+```
+
+We reshape the data to show the average tooth length readings according to supplement type and dose.
+
+```{r, echo = FALSE}
+library(reshape2)
+mt <- melt(ToothGrowth, id = c("supp", "dose"), measure.vars = c("len"))
+aveLen <- dcast(mt, supp + dose ~ variable, mean)
+aveLen
+```
+
+In this section, we use boxplots to illustrate the relationship between the response and supplement typse by ignoring dose levels (see Fig. 1) and factoring in dose levels (see Fig. 3). We also investigate the relationship of response against dose ignoring supplement type (see Fig. 2).
+
+In Fig. 1, we compare the distributions between mean response readings obtained from the OJ and VC delivery methods ignoring dose. It appears that the supplement type may affect the tooth growth since the mean readings recorded for the OJ are higher than the VC type. However, the boxplot alone does not provide sufficient evidence on whether our observations are statistically significant. In Fig. 2, we plot the relationship between response and supplement dose ignoring delivery method. We observe an increasing trend with increasing dose (see also Fig. 4 in Appendix). Finally, Fig. 3 shows the relationship between response and supplement type grouped by dose; while the mean responses suggest a difference in OJ and VC delivery methods for dose levels of 0.5 and 1 mg, the two methods appear very similar for a 2 mg dose.
+
+```{r, fig.cap = "Relationship between response readings and supplement type", echo = FALSE }
+library(ggplot2)
+g <- ggplot(ToothGrowth, aes(factor(supp), len))+geom_boxplot(fill = "darkseagreen1", color = "darkslategray")+ stat_boxplot(geom ='errorbar', stat_params = list(width = 0.5))+theme(axis.text=element_text(size=8),
+        axis.title=element_text(size=8,face="bold")) + xlab("Supplement type") + ylab("Response readings")
+print(g)
+# fig_nums("fig2", "blah.")
+```
+
+```{r, fig.cap = "Relationship between response readings and supplement dose", echo = FALSE }
+g <- ggplot(ToothGrowth, aes(factor(dose), len))+geom_boxplot(fill = "skyblue1", color = "blue")+ stat_boxplot(geom ='errorbar', stat_params = list(width = 0.5))+theme(axis.text=element_text(size = 8),
+        axis.title=element_text(size = 8,face="bold")) + xlab("Supplement dose") + ylab("Response readings")
+print(g)
+```
+
+```{r, fig.cap = "Relationship between response readings and supplement type for each dose", echo = FALSE }
+g <- ggplot(ToothGrowth, aes(factor(supp), len))+geom_boxplot(fill = "red", color = "red3")+ stat_boxplot(geom ='errorbar', stat_params = list(width = 0.5))+theme(axis.text=element_text(size=8),
+        axis.title=element_text(size = 8,face="bold")) + xlab("Supplement type") + ylab("Response readings") + facet_wrap(~ dose)
+print(g)
+```
+
+## Inferential statistics
+
+The statistics given above are merely descriptive; the averaged response readings differ depending on supplement type and dose but to show whether the observed differences are reliable, one resorts to inference. We note that we have 60 observations corresponding to 60 different guinea pigs; it follows that we treat the data as **unpaired** in all the tests in this report. Consequently, we use an **independent samples t-test** to test the effectiveness of supplement type and dose on response. Further, we assume unequal variance; the latter leads to an adjusted degree of freedom calculation according to Welch's test. The results are discussed in the main body of the report and the full statistics are included in the Appendix.
+
+_Effectiveness of supplement type on tooth growth_
+
+```{r, echo = FALSE, include = FALSE}
+library(dplyr)
+TGVC <- filter(ToothGrowth, supp == "VC")
+TGOJ <- filter(ToothGrowth, supp == "OJ")
+```
+For the first test, we split the data in two groups according to supplement type and perform an unpaired t-test. The results are shown below; the p-value indicates that there is a probability of `r round(t.test(TGOJ$len, TGVC$len, paired = FALSE, var.equal = FALSE)$p.value, 3)` of obtaining a difference in means of `r round(20.66333-16.9633,2)` or larger **by chance**. That said, in most research, the conventional p-value associated with what is considered statistically significant, is < 0.05. We note that our calculated value is marginally close to the conventional cut-off for statistical significance. We now look at the 95% confidence interval output from the t-test. The confidence interval for the difference between the two means contains all the values of ($\mu_{OJ}-\mu_{VC}$), where $\mu_{OJ}$ and $\mu_{VC}$ denote the mean tooth length growth from the OJ and VC supplement types, respectively, which would not be rejected under the null hypothesis of $H_0: \mu_{OJ} - \mu_{VC}=0$. Since the calculated interval under the 95% confidence level includes 0, it implies that a mean of 0 is a possibility for the true value of the difference. We can conclude, based on the independent samples t-test, that the difference between the means is _not_ significant and thus we fail to reject the null hypothesis.  
+
+```{r, echo = FALSE}
+tests0 <- list()
+tests0[[1]] <- t.test(TGOJ$len, TGVC$len, paired = FALSE, var.equal = FALSE)
+```
+
+```{r, echo =FALSE}
+results0 <- sapply(tests0, function(x) {
+     c(x$statistic,
+       ci.lower = x$conf.int[1],
+       ci.upper = x$conf.int[2],
+       p.value = x$p.value)
+})
+colnames(results0) <- c("dose = all")
+results0
+```
+_Effectiveness of supplement dose on tooth growth_
+
+Referring to Fig. 2, we observe that averaged responses suggest a difference across dose. Observe that we have 3 groups for each dose^[For the comparison of more than two means, computations like ANOVA are better suited. Since ANOVA is beyond the scope of the class, we compare possible pairs with t-tests, although this might not be completely valid.]; we proceed by comparing possible pairs of dose [1-0.5, 2-0.5 and 2-1] with t-tests. As suggested by p-values of << 0.05 as well as confidence intervals entirely above 0, we conclude that the results are statistically significant.
+```{r, echo = FALSE, include = FALSE}
+library(dplyr)
+TG05 <- filter(ToothGrowth, dose == 0.5)
+TG1 <- filter(ToothGrowth, dose == 1)
+TG2 <- filter(ToothGrowth, dose == 2)
+#tests
+tests2 <- list()
+tests2[[1]] <- t.test(TG1$len, TG05$len, paired = FALSE, var.equal = FALSE)
+tests2[[2]] <- t.test(TG2$len, TG05$len, paired = FALSE, var.equal = FALSE)
+tests2[[3]] <- t.test(TG2$len, TG1$len, paired = FALSE, var.equal = FALSE)
+```
+
+```{r, echo =FALSE}
+results2 <- sapply(tests2, function(x) {
+     c(x$statistic,
+       ci.lower = x$conf.int[1],
+       ci.upper = x$conf.int[2],
+       p.value = x$p.value)
+})
+colnames(results2) <- c("1 vs .5 mg", "2 vs .5 mg", "2 vs 1 mg")
+results2
+```
+_Effectiveness of supplement dose and type on tooth growth_
+
+We now repeat the first test taking into account supplemtn dose and type. We note that our study ignores the 2 mg dose since the observed sample means show little difference (see Fig. 3). Two t-tests are performed with response data from VC and OJ corresponding to a dose of 0.5 and 1 mg. Again, the t-test results suggest statistical significance.
+
+```{r, echo = FALSE, include = FALSE}
+library(dplyr)
+TGVC05 <- filter(ToothGrowth, supp == "VC" & dose == 0.5)
+TGOJ05 <- filter(ToothGrowth, supp == "OJ" & dose == 0.5)
+TGVC1 <- filter(ToothGrowth, supp == "VC" & dose == 1)
+TGOJ1 <- filter(ToothGrowth, supp == "OJ" & dose == 1)
+#tests
+tests <- list()
+tests[[1]] <- t.test(TGOJ05$len, TGVC05$len, paired = FALSE, var.equal = FALSE)
+tests[[2]] <- t.test(TGOJ1$len, TGVC1$len, paired = FALSE, var.equal = FALSE)
+```
+
+```{r, echo =FALSE}
+results <- sapply(tests, function(x) {
+     c(x$statistic,
+       ci.lower = x$conf.int[1],
+       ci.upper = x$conf.int[2],
+       p.value = x$p.value)
+})
+colnames(results) <- c("dose = 0.5", "dose = 1")
+results
+```
+
+```{r, echo = FALSE}
+result2 <- t.test(TGOJ05$len, TGVC05$len, paired = FALSE, var.equal = FALSE)
+```
+
+## Concluding remarks
+
+We have carried out inferential data analyses on the ToothGrowth data set. Independent samples t-tests were used to test the effectiveness of supplement dose and type on tooth length. As discussed above, we have assumed an unpaired data set and unequal variance. Additionally, we make the following assumptions when using the t-test statistic:
+
+* The data follow the normal probability distribution (see Shapiro-Wilk normality test and Q-Q plot in Appendix).
+* The two samples are independent: there is no relationship between the guinea pigs in one sample as compared to the other.
+
+The results are summarised as follows:
+
+ * Effectiveness on supplement type on response, t(df = 55.309) = 1.92, p = 0.06: no significant difference was found
+ * Effectiveness on supplement dose on response:
+    * Pair 1 (1 vs 0.5 mg), t(df = 37.986) = 6.47, p = 1.26e-07: 1 mg is associated with _higher_ growth than 0.5 mg
+    * Pair 2 (2 vs 0.5 mg), t(df = 36.883) = 11.80, p = 4.40e-15: 2 mg is associated with _higher_ growth than 0.5 mg
+    * Pair 3 (2 vs 1 mg), t(df = 37.101) = 4.90, p = 1.913-05: 2 mg is associated with _higher_ growth than 1 mg
+ * Effectiveness on supplement type (per dose level) on response:
+    * For 0.5 mg, t(df = 14.969), p = 0.006: OJ type is associated with _higher_ growth than VC
+    * For 1 mg, t(df = 15.358), p = 0.001: OJ type is associated with _higher_ growth than VC
+
+## Appendix
+
+### Summary statistics
+
+```{r, echo = FALSE}
+summary(ToothGrowth)
+```
+
+An increase in dose leads to an increase in averaged tooth length readings while OJ as the supplement type leads to higher response at 0.5, 1 mg dose but the effect decreases significantly at 0.2 mg. This trend is most clearly observed graphically in Fig. 4. 
+
+```{r, fig.cap = "Relationship between tooth length readings and supplement dose grouped by supplement type.", echo = FALSE }
+g <- ggplot(aveLen, aes(dose, len)) + geom_point() + geom_line(color = "red")+facet_grid(. ~ supp)+
+  xlab("Dose [mg]") + ylab("Odontoplast readings")+theme(axis.text=element_text(size=8),
+        axis.title=element_text(size=8,face="bold"))
+print(g)
+# fig_nums <- captioner()
+# fig_nums("fig1", "Relationship between tooth length and supplement dose grouped by supplement.")
+```
+
+### Independent samples t-test results: R output
+
+Here, we show the results as output by R on the various t-tests discussed in the main body of the report.
+
+*Test 1*: effectiveness on supplement type on response
+
+```{r, echo = FALSE}
+t.test(TGOJ$len, TGVC$len, paired = FALSE, var.equal = FALSE)
+```
+
+
+*Test 2*: effectiveness on 1 and 0.5 mg dose on response:
+
+```{r, echo = FALSE}
+ t.test(TG1$len, TG05$len, paired = FALSE, var.equal = FALSE)
+```
+
+*Test 3*: effectiveness on 2 and 0.5 mg dose on response:
+
+```{r, echo = FALSE}
+ t.test(TG2$len, TG05$len, paired = FALSE, var.equal = FALSE)
+```
+
+*Test 4*: effectiveness on 2 and 1 mg dose on response:
+
+```{r, echo = FALSE}
+ t.test(TG2$len, TG1$len, paired = FALSE, var.equal = FALSE)
+```
+
+*Test 5*: effectiveness on supplement type on response with dose = 0.5
+
+```{r, echo = FALSE}
+ t.test(TGOJ05$len, TGVC05$len, paired = FALSE, var.equal = FALSE)
+```
+
+*Test 6*: effectiveness on supplement type on response with dose = 1
+
+```{r, echo = FALSE}
+ t.test(TGOJ1$len, TGVC1$len, paired = FALSE, var.equal = FALSE)
+```
+
+### Shapiro Wilk normality test and Q-Q plot
+
+As indicated in the main body of the report, the t-test requires that the distributions do not departure from normality. The Shapiro-Wilk test uses the null hypothesis to check whether our sample data used to compute the t statistic comes from a normally distributed population. We check here that whether the data corresponding to 1mg dose is normally distributed.
+
+```{r, echo = TRUE}
+shapiro.test(TG1$len)
+```
+Since the p-value>0.05, the null hypothesis that the population is normally distributed cannot be rejected. In addition, we include a Q-Q plot which verifies that the data is approximately normal.
+
+```{r, fig.cap = "Q-Q plot for response corresponding to 1 mg dose.", fig.height = 4, fig.width =4,  echo = FALSE }
+qqnorm(TG1$len)
+qqline(TG1$len)
+```

@@ -1,0 +1,59 @@
+---
+title: "Statistical Inference Course Project"
+subtitle: "Part 1: simulation"
+output: pdf_document
+author: "audrey"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+---
+
+## Overview:
+
+This report investigates how the exponential distribution relates to the Central Limit Theorem (CLT). The CLT states that if we repeatedly take samples from a population, and calculate the averages of each one, the collection of those averages will be normally distributed regardless of the underlying distribution. The CLT applies to more than the *mean* statistic though in the current report we deal with the means. 
+
+## Simulations
+Here, we investigate the distribution of averages of 40 exponentials. We take a sample of size 40 from the exponential distribution and compute its average. We then repeat this process 1000 times. We first focus on the sample mean of the distribution and compare it to the theoretical value of $1/\lambda$ where $\lambda$ is the rate parameter. Note that we fix $\lambda=0.2$ throughout this report.
+
+```{r, echo = TRUE}
+set.seed(123)
+lambda<-0.2
+sims<-1000
+n<-40
+rexps <- replicate(sims, rexp(n, lambda))
+```
+
+We plot the distribution of 1000 averages of a sample of 40 exponentials.
+
+# ```{r, echo=TRUE}
+# hist(rexps)
+# ```
+
+The theoretical mean is calculated as $1/\lambda=$ `r 1/lambda` while the sample mean (assigned the variable name samplemean in the R code below) obtained from a thousand simulations is found to be:
+
+```{r, echo = TRUE}
+colmean<-colMeans(rexps)
+samplemean<- mean(colmean)
+samplemean
+```
+
+The standard deviation of the exponential distribution is also $1/\lambda$; the variance is the square of the standard deviation hence the theoretical variance is calculated as $1/\lambda=$ `r (1/lambda)^2`. From the sample distribution, the sample variance is `r var(rexps)`.
+
+```{r, echo = TRUE}
+samplevar<-var(colmean)
+samplevar
+```
+
+### Central limit theorem comparison
+# ```{r }
+# library(ggplot2)
+# df<-data.frame(rexps)
+# m <- ggplot(df, aes(x=rexps))
+# m+ geom_histogram(aes(y = ..density..)) + geom_density(color="red")+
+#   ggtitle("Density of 40 averages from exponential distribution")+ylab("Density")+xlab("Mean of 40 exponentials")+stat_function(fun=dnorm,args=list(mean=samplemean, sd=sqrt(samplevar)),color = "yellow", size = 1.0)
+# ```
+
+### Departure from normality
+
+```{r, echo = TRUE}
+qqnorm(colmeans)
+qqline(colmeans)
+```
