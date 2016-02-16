@@ -1,0 +1,241 @@
+---
+subtitle: "An investigation of the effect of automatic/manual transmission on MPG"
+output: 
+  pdf_document: 
+    fig_caption: yes
+    fig_height: 3
+    fig_width: 3
+---
+
+```{r, echo = FALSE, warning=FALSE, message=FALSE}
+library(datasets)
+library(plyr)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(grid)
+library(gridExtra)
+library(leaps)
+library(caret)
+```
+## Executive summary
+
+This report is concerned with investigating relationships between automatic/manual transmisision and miles per gallon (MPG). *Motor Trend*, an automobile industry magazine is particularly interested in the following two questions: 1) Is an automatic or manual transmission better for MPG? 2) Quantify the MPG difference between automatic and manual transmission.
+We have a dataset of a collection of cars to assess the relationship between MPG and transmission; the dataset includes many variables (see below) which may be potential confounders; these could adversely influence the results of our study. The report includes a discussion on feature selection and a comparison of various mulitvariate regression models.
+
+## Data exploration & analysis
+
+The data set we have is the  `mtcars` data set that can be found in `R` while a brief description of the variables may be obtained by typing `?mtcars`. We begin by looking at correlations between the quantitative variables and the outcome, `mpg`. Prior to assessing correlations however, we add to our existing dataset the squares of potential predictors. The reason behind the transformation is that relationships in physics are rarely linear; a correlation matrix can show whether a variable in higher power is more correlated with the outcome compared to the same variable in first degree. We select the continuous variables and create a correlation plot (see Appendix, Fig. 1). In Fig. 2 (refer to Appendix), we have three panels wherein we explore the effect of transmission on MPG. Since we are interested in the effect of transmission on MPG, we illustrate through a violin plot the relationship of the MPG variable and transmission in panel (a). The black marker indicates the mean value in each distribution and we observe that cars with a manual transmission offer higher MPG than those with automatic transmission. 
+
+```{r, echo = FALSE, results='hide'}
+data(mtcars)
+# convert certain variables to factors.
+indx <- c(2,8:11)
+mtcars[, indx] <- lapply(mtcars[, indx], as.factor)
+mtcars$am   <- factor(mtcars$am,labels=c("Automatic","Manual"))
+summarydata <- str(mtcars)
+```
+
+````{r, echo = FALSE}
+# 1)	`mpg`:	Miles/(US) gallon
+# 2)	`cyl`:	Number of cylinders
+# 3)	`disp`:	Displacement (cu.in.)
+# 4)	`hp`:	Gross horsepower
+# 5)	`drat`:	Rear axle ratio
+# 6)	`wt`:	Weight (lb/1000)
+# 7)	`qsec`:	1/4 mile time
+# 8)	`vs`	type of internal-combustion engine (Vee or Straight)
+# 9)	`am`:	Transmission (0 = automatic, 1 = manual)
+# 10)	`gear`:	Number of forward gears
+# 11)	`carb`:	Number of carburetors
+```
+
+```{r, echo=FALSE, results='hide'}
+mtcarsnum <- mtcars[, sapply(mtcars, is.numeric)]
+mtcarsnum2 <- plyr::mutate(mtcarsnum, power2 = mtcarsnum[, -1]^2)
+```
+
+Next, we perform a statistical test to check whether the two means we observe from the two populations, MPG for automatic and MPG for manual transmission, as seen in Fig. 3 are reliably different from each other.
+
+```{r, echo = FALSE}
+am0 <- mtcars[mtcars$am %in% c("Automatic"), ]
+am1 <- mtcars[mtcars$am %in% c("Manual"), ]
+#tests <- list()
+#tests[[1]] <- t.test(x = am1$mpg, y = am0$mpg, var.equal = FALSE, paired = FALSE)
+# results <- sapply(tests, function(x) {
+#      c(x$statistic,
+#        ci.lower = x$conf.int[1],
+#        ci.upper = x$conf.int[2],
+#        p.value = x$p.value)
+# })
+XX <- t.test(x = am1$mpg, y = am0$mpg, var.equal = FALSE, paired = FALSE)
+# colnames(results) <- c("results")
+```
+We assume that the data is sampled from normally distributed populations and that the two populations have *unequal* variance. The results of the *Welch Two Sample t-test* are shown below.
+
+$t$-statistic  | CI (lower) | CI (upper) | p-value
+------------- | ------------- | ------------- | ------------- |
+`r round(XX$statistic,3)`   | `r round(XX$conf.int[1],3)` |  `r round(XX$conf.int[2],3)` | `r round(XX$p.value,4)`
+
+Given the p-value, at a significance level of 0.05, we reject the null hypothesis and conclude that the difference in means is statistically significant such that manual transmission is associated with *higher* MPG than automatic transmission.
+
+## Multivariate regression
+
+In model selection, we seek a relationship between a response (here, this is MPG) and predictors that is *parsimonious*.
+We are interested in assessing the effect of the transmission on gas mileage hence a first, simple model is $$y_1=\beta_0+ \beta_1X_i+\varepsilon$$ where $X_0=0$ if transmission is automatic and $X_1 =1$ if manual, $\varepsilon$ ($\varepsilon_ i$, where $i=1,..n$) are the unobserved errors assuming to be independent and identically distributed (i.i.d). The subsript "1" in the outcome represents the model we are considering (here, this is model **1**).
+
+```{r, echo=FALSE, results='hide', warning=FALSE}
+model0 <- train(mpg ~ factor(am), method = "lm", data = mtcars)
+summary0 <- summary(model0$finalModel)
+```
+
+From the table below, we observe that only 35% of the variability has been accounted for by using the transmission factor as a regressor. The coefficient estimate $\hat{\beta_0}$ gives the `mpg` for automatic transmission while $\hat{\beta_1}$ gives the change in `mpg` for manual transmission *relative* to automatic. This model shows that manual transmission is better for `mpg` by approximately 7 units. 
+
+$\hat{\beta _0}$  | $\hat{\beta_1}$ | R$^2$ | Adj. R$^2$
+------------- | ------------- | ------------- | ------------- |
+`r round(coef(model0$finalModel)[1],3)`   | `r round(coef(model0$finalModel)[2],3)` | `r round(summary0$r.squared,4)` | `r round(summary0$adj.r.squared,4)`
+
+We build on the model by including variables that are highly correlated with outcome but disregarding predictors that are highly correlated with each other to avoid variance inflation. Based on the exploratory data analysis, the quantitative variables with the highest correlations with `mpg` are: `wt`, `disp`, `wt`$^2$, and `hp`. However, the variables `disp` and `wt` are highly correlated (`corr = 0.888`) thus  `disp` is removed on account of a higher mean absolute correlation compared to `wt`.
+
+```{r, echo=FALSE, messages=FALSE, result = 'hide', warning=FALSE}
+M <- abs(cor(mtcarsnum[,-1]))
+diag(M)<-0
+highlyCorrelated <- findCorrelation(M, cutoff = 0.80, verbose = FALSE, names = TRUE)
+#print(highlyCorrelated)
+```
+
+Our second model builds on the first one by including the variables `hp` and `wt`: $y_2 = \beta_0 +\beta_1 X_i + \beta_2\text{hp} +\beta_3\text{wt}+\varepsilon$.
+```{r, echo=FALSE, results='hide'}
+model1 <- train(mpg ~ factor(am) + hp + wt, method = "lm", data = mtcars)
+summary1 <- summary(model1$finalModel)
+nested <- anova(model0$finalModel, model1$finalModel)
+pv<-nested$`Pr(>F)`[2]
+```
+
+The model coefficients are shown below as well as the R$^2$ and adjusted R$^2$ values. We look at the adjusted R$^2$ as this quantity factors in the fact that we have two more variables in our model now compared to the first model. This value is now up to `r round(summary1$adj.r.squared,4)` and an **analysis of variance** calculation on the two models suggests with a p-value of 3.744703e$^{-09}$ that the inclusion of the two variables has improved on our first model.
+
+
+$\hat{\beta _0}$  | $\hat{\beta_1}$ |$\hat{\beta_2}$ | $\hat{\beta_3}$|R$^2$ | Adj. R$^2$
+------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
+`r round(coef(model1$finalModel)[1],3)`   | `r round(coef(model1$finalModel)[2],3)` | `r round(coef(model1$finalModel)[3],3)` |  `r round(coef(model1$finalModel)[4],3)`| `r round(summary1$r.squared,4)` | `r round(summary1$adj.r.squared,4)`
+
+Now, $\hat{\beta_0}$ gives the MPG for automatic transmission, holding `hp` and `wt` constant. The estimate for $\hat{\beta_1}$ represents the change of MPG for manual transmission compared to automatic, again, keeping all other variables constant. This model suggests that MPG is better for manual transmission by about 2 units. Beyond the adjusted R squared measure, we look at diagnostic plots to assess whether a linear fit to the aforementioned variables is a sensible one (see Appendix for figures). The upper left plot shows the residuals (the vertical distance from a point to the regression line) against the fitted values, $\hat{y_2}$. The smoothed blue line shows a distinct U-shape indicating that the linear model is not a good fit. The upper left plot shows that our normality assumption is valid, and that the variance of the residuals can be considered constant.
+
+The third model we considered is the addition of wt$^2$, based on the correlations we observed before and the fact that diagnostics on model 2 indicate a nonlinear relationship; $y_3 = \beta_0 +\beta_1 X_i + \beta_2\text{hp} +\beta_3\text{wt}+\beta_4\text{wt}^2+\varepsilon$.
+```{r, echo=FALSE, results='hide', warning = FALSE}
+model2 <- train(mpg ~ factor(am) + hp + wt + I(wt^2), method = "lm", data = mtcars)
+summary2 <- summary(model2$finalModel)
+nested <- anova(model1$finalModel, model2$finalModel)
+pv<-nested$`Pr(>F)`[2]
+# $\hat{\beta _0}$  | $\hat{\beta_1}$ |$\hat{\beta_2}$ | $\hat{\beta_3}$|$\hat{\beta_4}$ |R$^2$ | Adj. R$^2$
+# ------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
+# `r round(coef(model2$finalModel)[1],3)`   | `r round(coef(model2$finalModel)[2],3)` | `r round(coef(model2$finalModel)[3],3)` |  `r round(coef(model2$finalModel)[4],3)`|  `r round(coef(model2$finalModel)[5],3)`| `r round(summary2$r.squared,4)` | `r round(summary2$adj.r.squared,4)`
+```
+
+We observe some improvement in the adjusted R squared measure, the p-value associated with the addition of `wt`$^2$ is 0.015. The results seem to suggest that the MPG is better for manual transmission by 0.3 units; however, the residual plot (Fig. 4, top) suggests that the nonlinear model is a better fit. Finally, we compare the performance of models 1-3 against an all-subsets regression model (model 4) obtained using the `leaps` package which ranks all the possible models from each subset. For instance, if we choose to have only one regressor in our model, the procedure in `leaps` finds the best single-regressor model. We used the **exhaustive** method to obtain the following model: $$y_4 = \beta_0 +\beta_1 X_i +\beta_2 \text{wt} +\beta_3 \text{qsec}$$.
+
+```{r, echo = FALSE, result = 'hide', warning=FALSE}
+regsubsets.out <-
+    regsubsets(mpg ~ .,
+               data = mtcars,
+               nbest = 1,       # 1 best model for each number of predictors
+               nvmax = NULL,    # NULL for no limit on number of variables
+               force.in = NULL, force.out = NULL,
+               method = "exhaustive",
+               intercept = TRUE)
+#regsubsets.out
+summary.out <- summary(regsubsets.out)
+ #as.data.frame(summary.out$outmat)
+model3 <- train(mpg ~ factor(am) + wt+ qsec, method = "lm", data = mtcars)
+summary3 <- summary(model3$finalModel)
+```
+
+$\hat{\beta _0}$  | $\hat{\beta_1}$ |$\hat{\beta_2}$ | $\hat{\beta_3}$|R$^2$ | Adj. R$^2$
+------------- | ------------- | ------------- | ------------- | ------------- | ------------- |
+`r round(coef(model3$finalModel)[1],3)`   | `r round(coef(model3$finalModel)[2],3)` | `r round(coef(model3$finalModel)[3],3)` |  `r round(coef(model3$finalModel)[4],3)`| `r round(summary3$r.squared,4)` | `r round(summary3$adj.r.squared,4)`
+
+This shows that `mpg` is better for manual transmission by 3 units.
+
+## Appendix
+
+```{r, echo = FALSE, fig.cap = "Graphical display of correlation matrix: MPG has a strong negative correlation with the variables associated with gross horsepower, displacement, and weight. Further, MPG is positively correlated with rear axle ratio (`drat`) and has low positive correlation with `qsec` which measures the 1/4 mile time."}
+suppressMessages(library(Hmisc))
+flattenCorrMatrix <- function(cormat, pmat) {
+  ut <- upper.tri(cormat)
+  data.frame(
+    row = rownames(cormat)[row(cormat)[ut]],
+    column = rownames(cormat)[col(cormat)[ut]],
+    cor  =(cormat)[ut],
+    p = pmat[ut]
+    )}
+res <- rcorr(as.matrix(mtcarsnum2))
+
+#table with corr and pvalues
+corrtable <- flattenCorrMatrix(res$r, res$P) 
+# install.packages("corrplot")
+suppressMessages(library(corrplot))
+corrplot(res$r, method = "circle", type="upper", order="hclust", tl.col="black", tl.srt=45, tl.cex = .75, tl.offset = 1)
+```
+
+```{r, echo = FALSE, fig.height = 5, fig.width = 7, fig.cap = "(a) Violin plot showing MPG against automatic and manual transmission. Here, the black marker indicates the _mean_ value. Transmission vs MPG grouped by (b) number of cyclinders and (c) type of combustion engine"}
+mtcarssub1 <- select(mtcars, mpg, cyl, am, hp, wt)
+p1 <- ggplot(mtcars, aes(am, mpg, fill = cyl)) + geom_boxplot(alpha = 0.75, position = position_dodge(1)) + theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9))+ ggtitle("(b)")
+#+ xlab("transmission")
+p2 <- ggplot(mtcars, aes(am, mpg, fill = vs)) + geom_boxplot(alpha = 0.75, position = position_dodge(1)) + theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9))+ggtitle("(c)")
+# p3 <- ggplot(mtcars, aes(am, mpg, fill = gear)) + geom_boxplot(alpha = 0.75, position = position_dodge(1)) + theme(text = element_text(size = 10), axis.title = element_text(size =9))+scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9"))
+# mtcarsfilt <- filter(mtcars, as.numeric(carb)<5)
+# p4 <- ggplot(mtcarsfilt, aes(am, mpg, fill = carb)) + geom_boxplot(alpha = 0.75, position = position_dodge(1)) + theme(text = element_text(size = 10), axis.title = element_text(size =9))
+g <- ggplot(mtcars, aes(x = am, y = mpg))+geom_violin(alpha = 0.5, color = 'gray') + 
+  geom_jitter(alpha = 1, aes(color = am), position = position_jitter(w=0)) +
+  theme(text = element_text(size = 8), legend.position="none", plot.title =element_text(size = 9)) + stat_summary(fun.y="mean", geom="point")+ggtitle("(a)")
+# grid.arrange(p1, p2, p3, p4, ncol = 2)
+grid.arrange(g, p1, p2, ncol = 3, nrow = 2)
+```
+
+```{r, echo=FALSE, warning = FALSE, message=FALSE, result='hide'}
+diagPlot<-function(model){
+    p1<-ggplot(model, aes(.fitted, .resid))+geom_point()
+    p1<-p1+stat_smooth(method="loess")+geom_hline(yintercept=0, col="red", linetype="dashed")
+    p1<-p1+xlab("Fitted values")+ylab("Residuals")
+    p1<-p1+ggtitle("Residual vs Fitted Plot")+theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9))
+    
+    p2<-ggplot(model, aes(qqnorm(.stdresid)[[1]], .stdresid))+geom_point(na.rm = TRUE)
+    p2<-p2+geom_abline(aes(qqline(.stdresid)))+xlab("Theoretical Quantiles")+ylab("Standardized Residuals")
+    p2<-p2+ggtitle("Normal Q-Q")+theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9))
+    
+    p3<-ggplot(model, aes(.fitted, sqrt(abs(.stdresid))))+geom_point(na.rm=TRUE)
+    p3<-p3+stat_smooth(method="loess", na.rm = TRUE)+xlab("Fitted Value")
+    p3<-p3+ylab(expression(sqrt("|Standardized residuals|")))
+    p3<-p3+ggtitle("Scale-Location")+theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9))
+    
+    p4<-ggplot(model, aes(seq_along(.cooksd), .cooksd))+geom_bar(stat="identity", position="identity")
+    p4<-p4+xlab("Obs. Number")+ylab("Cook's distance")
+    p4<-p4+ggtitle("Cook's distance")+theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9))
+    
+    p5<-ggplot(model, aes(.hat, .stdresid))+geom_point(aes(size=.cooksd), na.rm=TRUE)
+    p5<-p5+stat_smooth(method="loess", na.rm=TRUE)
+    p5<-p5+xlab("Leverage")+ylab("Standardized Residuals")
+    p5<-p5+ggtitle("Residual vs Leverage Plot")
+    p5<-p5+scale_size_continuous("Cook's Distance", range=c(1,5))
+    p5<-p5+theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9), legend.position="bottom")
+    
+    p6<-ggplot(model, aes(.hat, .cooksd))+geom_point(na.rm=TRUE)+stat_smooth(method="loess", na.rm=TRUE)
+    p6<-p6+xlab("Leverage hii")+ylab("Cook's Distance")
+    p6<-p6+ggtitle("Cook's dist vs Leverage hii/(1-hii)")
+    p6<-p6+geom_abline(slope=seq(0,3,0.5), color="gray", linetype="dashed")
+    p6<-p6+theme(text = element_text(size = 8), axis.title = element_text(size =8), plot.title =element_text(size = 9))
+    
+    return(list(rvfPlot=p1, qqPlot=p2, sclLocPlot=p3, cdPlot=p4, rvlevPlot=p5, cvlPlot=p6))
+}
+```
+
+```{r, echo = FALSE, fig.height = 4, fig.width = 6, fig.cap = "Diagnostic plots for model 2", messages = FALSE, warning = FALSE}
+diagPlts<-diagPlot(model1$finalModel)
+do.call(grid.arrange, diagPlts[c(1:3,5)])
+```
+
+```{r, echo = FALSE, fig.height = 4, fig.width = 6, fig.cap = "Residual plots for model 3 (top) and model 4 (bottom)", messages = FALSE, warning = FALSE}
+diagPlts2<-diagPlot(model2$finalModel)
+diagPlts3<-diagPlot(model3$finalModel)
+do.call(grid.arrange, c(diagPlts2[1], diagPlts3[1]))
+```
